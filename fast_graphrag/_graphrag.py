@@ -28,6 +28,7 @@ class QueryParam:
     entities_max_tokens: int = field(default=4000)
     relations_max_tokens: int = field(default=3000)
     chunks_max_tokens: int = field(default=9000)
+    temperature: float = field(default=0.7)
 
 
 @dataclass
@@ -70,7 +71,7 @@ class BaseGraphRAG(Generic[GTEmbedding, GTHash, GTChunk, GTNode, GTEdge, GTId]):
         content: Union[str, List[str]],
         metadata: Union[List[Optional[Dict[str, Any]]], Optional[Dict[str, Any]]] = None,
         params: Optional[InsertParam] = None,
-        show_progress: bool = True
+        show_progress: bool = True,
     ) -> Tuple[int, int, int]:
         return get_event_loop().run_until_complete(self.async_insert(content, metadata, params, show_progress))
 
@@ -79,7 +80,7 @@ class BaseGraphRAG(Generic[GTEmbedding, GTHash, GTChunk, GTNode, GTEdge, GTId]):
         content: Union[str, List[str]],
         metadata: Union[List[Optional[Dict[str, Any]]], Optional[Dict[str, Any]]] = None,
         params: Optional[InsertParam] = None,
-        show_progress: bool = True
+        show_progress: bool = True,
     ) -> Tuple[int, int, int]:
         """Insert a new memory or memories into the graph.
 
@@ -194,7 +195,7 @@ class BaseGraphRAG(Generic[GTEmbedding, GTHash, GTChunk, GTNode, GTEdge, GTId]):
                 "relations": params.relations_max_tokens * TOKEN_TO_CHAR_RATIO,
                 "chunks": params.chunks_max_tokens * TOKEN_TO_CHAR_RATIO,
             },
-            output_context_str=not params.only_context
+            output_context_str=not params.only_context,
         )
         if params.only_context:
             answer = ""
@@ -204,11 +205,9 @@ class BaseGraphRAG(Generic[GTEmbedding, GTHash, GTChunk, GTNode, GTEdge, GTId]):
                 if params.with_references
                 else "generate_response_query_no_references",
                 llm=self.llm_service,
-                format_kwargs={
-                    "query": query,
-                    "context": context_str
-                },
+                format_kwargs={"query": query, "context": context_str},
                 response_model=TAnswer,
+                temperature=params.temperature,
             )
             answer = llm_response.answer
 
@@ -216,10 +215,12 @@ class BaseGraphRAG(Generic[GTEmbedding, GTHash, GTChunk, GTNode, GTEdge, GTId]):
 
     def save_graphml(self, output_path: str) -> None:
         """Save the graph in GraphML format."""
+
         async def _save_graphml() -> None:
             await self.state_manager.query_start()
             try:
                 await self.state_manager.save_graphml(output_path)
             finally:
                 await self.state_manager.query_done()
+
         get_event_loop().run_until_complete(_save_graphml())
